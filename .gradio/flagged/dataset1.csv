@@ -1,0 +1,2 @@
+Minimum Support Count,Minimum Confidence,Percentage of Dataset to Use,output,timestamp
+80,5,25,"[frozenset({'Restaurants', 'Bars', 'American (Traditional)', 'Sports Bars', 'Nightlife'})]",2025-03-26 12:20:30.062570
