@@ -5,6 +5,7 @@ from sklearn.preprocessing import MinMaxScaler
 from collections import Counter
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
+import gradio as gr
 
 def read_file(file_path,percentage):
     data=pd.read_csv(file_path)
@@ -14,6 +15,8 @@ def read_file(file_path,percentage):
 
     # Drop rows with any missing values
     df_clean = sampled_data.dropna()
+    #df_clean = sampled_data.fillna(sampled_data.mode().iloc[0])  # Uses mode to fill missing values
+
     
     target_column = df_clean.columns[-1]
 
@@ -36,8 +39,8 @@ def read_file(file_path,percentage):
     scaler = MinMaxScaler()
     normalized_features= scaler.fit_transform(features_encoded)
     features_encoded = pd.DataFrame(normalized_features, columns=features_encoded.columns)
-    print("Encoded labels:", labels_encoded)
-    print("Encoded features:", features_encoded)
+    # print("Encoded labels:", labels_encoded)
+    # print("Encoded features:", features_encoded)
     return normalized_features, labels_encoded
 
 
@@ -78,7 +81,7 @@ class ANN(object):
     def __init__(self):
         self.input_size = 25
         self.output_size = 1
-        self.hidden_size = 15
+        self.hidden_size = 17
 
         # Weights
         self.w1 = np.random.randn(self.input_size, self.hidden_size) #wieghts between input and hidden layer (25*10)
@@ -92,7 +95,10 @@ class ANN(object):
         if(deriv==True):
             return s * (1-s)
         return 1/(1+np.exp(-s))
-
+    # def relu(self, s, deriv=False):
+    # if deriv:
+    #     return (s > 0).astype(float)
+    # return np.maximum(0, s)
     
     def feed_forward(self, X):
         self.y1 = np.dot(X, self.w1) + self.b1 # w1*X + b1
@@ -121,7 +127,7 @@ class ANN(object):
 
 
 
-    def fit(self, X, y, epochs=1000, learning_rate=0.01):
+    def fit(self, X, y, epochs=8000, learning_rate=0.01):
         y = y.reshape(-1, 1)
         for epoch in range(epochs):
             output = self.feed_forward(X)
@@ -150,42 +156,64 @@ class ANN(object):
         return accuracy
 
     
-
-def main():
+def decode_labels(encoded_labels):
+    decoded_y_predicate = ['ckd' if p == 1 else 'notckd' for p in encoded_labels]
+    decoded_labels = np.array(decoded_y_predicate)
+    return decoded_labels
+def main(  k, percentage,file_path):
     # Read the file and get the normalized features and labels
-    normalized_features, labels_encoded = read_file("data/Kidney_Disease Data for classification.csv", 100)
+    normalized_features, labels_encoded = read_file(file_path, percentage)
     
     # Split the data into training and testing sets
-    X_train, X_test, y_train, y_test = train_test_split(normalized_features, labels_encoded, test_size=0.25, random_state=42)
+    x_train, x_test, y_train, y_test = train_test_split(normalized_features, labels_encoded, test_size=0.25, random_state=42)
     # print("X_train shape:", X_train)
     # print("y_train shape:", y_train)
     # print("X_test shape:", X_test)
     # print("y_test shape:", y_test)
     
-    # Create a KNN classifier
-    # knn = KNN(k=8)
+    #Create a KNN classifier
+    knn = KNN(k)
     
-    # # Fit the model
-    # knn.fit(X_train, y_train)
+    # Fit the model
+    knn.fit(x_train, y_train)
     
-    # # Make predictions on the test set
-    # predictions = knn.predict(X_test)
-    
-    # # Calculate accuracy
-    # accuracy = np.sum(predictions == y_test)/len(y_test)
-    # print(f"Accuracy: {accuracy * 100:.2f}%")
+    # Make predictions on the test set
+    predictions = knn.predict(x_test)
+    knn_pred_df= pd.DataFrame(x_test, columns=[f'feature_{i}' for i in range(x_test.shape[1])])
+    knn_pred_df['predicted_label'] = decode_labels(predictions)
+    # Calculate accuracy
+    knn_accuracy = np.sum(predictions == y_test)/len(y_test)
+
     # Create an ANN classifier
     ann = ANN()
-    ann.fit(X_train, y_train, epochs=150, learning_rate=0.0015)
-    y_pred = ann.predict(X_test)
-    print(classification_report(y_test, y_pred))
-    accuracy = ann.accuracy(X_test, y_test, y_pred)
-    print(f"Accuracy: {accuracy*100}%")
+    ann.fit(x_train, y_train, epochs=150, learning_rate=0.0015)
+    y_pred = ann.predict(x_test)
+    ann_accuracy = ann.accuracy(x_test, y_test, y_pred)
+    ann_df = pd.DataFrame(x_test, columns=[f'feature_{i}' for i in range(x_test.shape[1])])
+
+# Add decoded predictions as a new column
+    ann_df['predicted_label'] = decode_labels(y_pred)
+    print("Predictions of Ann:" ,ann_df)
+    print("Predictions of KNN:" ,knn_pred_df)
+    print(f"Accuracy of Ann: {ann_accuracy*100}%")
+    print(f"Accuracy of knn: {knn_accuracy * 100:.2f}%")
+    return ann_df,knn_pred_df, f"Accuracy of ANN: {ann_accuracy*100:.2f}%, Accuracy of KNN: {knn_accuracy * 100:.2f}%"
     
     # print(np.bincount(labels_encoded.flatten()))
 
 
 
+interface = gr.Interface(
+    fn=main,  # Function to be called
+    inputs=[
+        gr.Number(label="enter k"),
+        gr.Number(label="Percentage of Dataset to Use"),
+        gr.Textbox(label="file path")  # Hidden input for file path
+    ],
+    outputs="text",  # Output type
+    title="Classification Analysis",
+    description="Enter the ks, percentage of the dataset to be analyzied and the file path"
+)
 
 
-main()
+interface.launch()
